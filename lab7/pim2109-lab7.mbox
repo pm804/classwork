@@ -1,0 +1,1752 @@
+From 33d40ddb70dbf0d1d7379e230188e003cf857f93 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Thu, 2 May 2024 21:36:43 -0400
+Subject: [PATCH 01/11] created the makefile for part 2A
+
+---
+ Makefile | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+ create mode 100644 Makefile
+
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 0000000..6533b5a
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,12 @@
++CC = gcc
++CFLAGS = -g -Wall
++LDFLAGS =
++LDLIBS =
++
++http-server: http-server.o
++
++http-server.o: http-server.c
++
++.PHONY: clean
++clean:
++	rm -f *.o a.out core http-server
+-- 
+2.34.1
+
+
+From c028b17b53877079858752f19f13d2ca359ba682 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Thu, 2 May 2024 21:37:14 -0400
+Subject: [PATCH 02/11] started making the server, need to finish writing
+ method to process the request
+
+---
+ http-server.c | 101 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 101 insertions(+)
+ create mode 100644 http-server.c
+
+diff --git a/http-server.c b/http-server.c
+new file mode 100644
+index 0000000..fa67a08
+--- /dev/null
++++ b/http-server.c
+@@ -0,0 +1,101 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <assert.h>
++#include <unistd.h>
++#include <sys/wait.h>
++#include <sys/stat.h>
++#include <arpa/inet.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++
++
++
++static void die(const char *msg){
++    perror(msg);
++    exit(1);
++}
++
++int process_request(char* request){
++
++    char *token_separators = "\t \r\n"; // tab, space, new line
++    char *method = strtok(request, token_separators);
++    char *requestURI = strtok(NULL, token_separators);
++    char *httpVersion = strtok(NULL, token_separators);
++
++    if (strncmp(httpVersion,"HTTP/1.0 ", 9) != 0 && strncmp(httpVersion, "HTTP/1.1 ", 9) != 0) {
++        fprintf(stderr, "unknown protocol response: %s\n", buf);
++        return -1;
++    }
++
++
++
++
++}
++int main(int argc, char* argv[]){
++    if(argc != 5){
++        fprintf(stderr, "usage: http-client <host name> <port number> <file path    >\n");
++    }
++
++
++    int server_port = atoi(argv[1]);
++    char* web_root = argv[2];
++    char* mdb_host = argv[3];
++    int mdb_port = atoi(argv[4]);
++
++    int servsock;
++    if ((servsock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
++        die("socket failed");
++
++    // Construct local address structure
++
++    struct sockaddr_in servaddr;
++    memset(&servaddr, 0, sizeof(servaddr));
++    servaddr.sin_family = AF_INET;
++    servaddr.sin_addr.s_addr = htonl(INADDR_ANY); // any network interface
++    servaddr.sin_port = htons(server_port);
++
++    // Bind to the local address
++
++    if (bind(servsock, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0)
++        die("bind failed");
++
++    // Start listening for incoming connections
++
++    if (listen(servsock, 5 /* queue size for connection requests */ ) < 0)
++        die("listen failed");
++
++    int clntsock;
++    socklen_t clntlen;
++    struct sockaddr_in clntaddr;
++
++    char request[2000];
++    int r; 
++
++    while (1) {
++
++        // Accept an incoming connection
++
++        clntlen = sizeof(clntaddr); // initialize the in-out parameter
++
++        if ((clntsock = accept(servsock,
++                        (struct sockaddr *) &clntaddr, &clntlen)) < 0)
++            die("accept failed");
++        printf("accepted connection\n"); 
++        r = recv(clntsock, request, sizeof(request), MSG_WAITALL);
++        printf("got %d bytes of data: %s\n", r, request);
++
++        }
++
++
++
++
++        close(clntsock);
++
++    }
++
++
++
++}
++
++
+-- 
+2.34.1
+
+
+From 6b2b5aefea55236af9fa1d36ec63e9a8fb673b77 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Sun, 5 May 2024 13:42:09 -0400
+Subject: [PATCH 03/11] finished methods to parse request
+
+---
+ http-server.c | 75 ++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 60 insertions(+), 15 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index fa67a08..43ed6df 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -16,22 +16,64 @@ static void die(const char *msg){
+     exit(1);
+ }
+ 
+-int process_request(char* request){
+ 
+-    char *token_separators = "\t \r\n"; // tab, space, new line
+-    char *method = strtok(request, token_separators);
+-    char *requestURI = strtok(NULL, token_separators);
+-    char *httpVersion = strtok(NULL, token_separators);
+-
+-    if (strncmp(httpVersion,"HTTP/1.0 ", 9) != 0 && strncmp(httpVersion, "HTTP/1.1 ", 9) != 0) {
+-        fprintf(stderr, "unknown protocol response: %s\n", buf);
+-        return -1;
+-    }
++int notImplemented_error(char* method, char* httpVersion){
++    char* notImplemented = "HTTP/1.0 501 Not Implemented\r\n\r\n<html><body><h1>501 Not Implemented</h1></body></html>\r\n";
+ 
++    int meth = strcmp(method, "GET");
++    int http10 = strcmp(httpVersion, "HTTP/1.0");
++    int http11 = strcmp(httpVersion, "HTTP/1.1");
+ 
++    char *buf = "200 OK";
++    if((meth != 0) || ((http10 || http11) != 0)){
++        snprint(buf, sizeof(buf), "501 Not Implemented");
++        if(send(clntsock, notImplemented_error, strlen(notImplemented_error), 0) != strlen(notImplemented_error)){
++            fprint(stderr, "send failed\n");
++        }
+ 
++        fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
++    } 
++//fclose(clntfile)
+ 
+ }
++
++int process_request(char* request, int clntsock, struct sockaddr_in clntaddr){
++
++    char status_buf[100];
++    snprintf(status_buf, sizeof(status_buf), "200 OK");
++
++    char *token_separators = "\t \r\n"; // tab, space, new line
++    char *method = strtok(request, token_separators);
++    char *requestURI = strtok(NULL, token_separators);
++    char *httpVersion = strtok(NULL, token_separators);
++    
++    char* dots = strstr(requestURI, "..");
++    char *badReq = "HTTP/1.0 400 Bad Request\r\n\r\n<html><body><h1><400 Bad Request </h1></body><html>\r\n";
++
++   /*
++    * if(!method || !requestURI || !httpVersion){
++    *     snprint(status_buf, sizeof(status_buf), "400 Bad Request"); 
++    *     fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
++    *     if(send(clntsock, badReq, strlen(badReq), 0) != strlen(badReq)){
++    *        fprintf(stderr, "send failed\n");
++    *     }
++    *     fclose(clntfile);
++    *} */
++ 
++    /*
++     * if(dots || requestURI[0] != '/')){
++     *     snprintf(status_buf, sizeof(status_buf), "400 Bad Request");
++     *     fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
++     *     if(send(clntsock, badReq, strlen(badReq), 0) != strlen(badReq)){
++     *        fprintf(stderr, "send failed\n");
++     *     }
++     *     fclose(clntfile):
++     *     }
++     *     */
++     notImplemented_error(char *httpVersion, char* method, int clntsock, struct sockaddr_in clntaddr);
++
++} 
++
+ int main(int argc, char* argv[]){
+     if(argc != 5){
+         fprintf(stderr, "usage: http-client <host name> <port number> <file path    >\n");
+@@ -79,14 +121,17 @@ int main(int argc, char* argv[]){
+         clntlen = sizeof(clntaddr); // initialize the in-out parameter
+ 
+         if ((clntsock = accept(servsock,
+-                        (struct sockaddr *) &clntaddr, &clntlen)) < 0)
+-            die("accept failed");
+-        printf("accepted connection\n"); 
++                        (struct sockaddr *) &clntaddr, &clntlen)) < 0){
++            die("accept failed\n");
++            continue;
++        } 
++
++      //  printf("accepted connection\n"); 
+         r = recv(clntsock, request, sizeof(request), MSG_WAITALL);
+-        printf("got %d bytes of data: %s\n", r, request);
++    //    printf("got %d bytes of data: %s\n", r, request);
+ 
+         }
+-
++        
+ 
+ 
+ 
+-- 
+2.34.1
+
+
+From fb63695cea042857fcfa38e769877e0d45e50b86 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Sun, 5 May 2024 14:41:51 -0400
+Subject: [PATCH 04/11] starting making the file path
+
+---
+ http-server.c | 28 ++++++++++++++++++++++------
+ 1 file changed, 22 insertions(+), 6 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index 43ed6df..bbdcca0 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -17,7 +17,7 @@ static void die(const char *msg){
+ }
+ 
+ 
+-int notImplemented_error(char* method, char* httpVersion){
++int notImplemented_error(char* method, char* httpVersion, int clntsock, struct sockaddr_in clntaddr){
+     char* notImplemented = "HTTP/1.0 501 Not Implemented\r\n\r\n<html><body><h1>501 Not Implemented</h1></body></html>\r\n";
+ 
+     int meth = strcmp(method, "GET");
+@@ -27,7 +27,7 @@ int notImplemented_error(char* method, char* httpVersion){
+     char *buf = "200 OK";
+     if((meth != 0) || ((http10 || http11) != 0)){
+         snprint(buf, sizeof(buf), "501 Not Implemented");
+-        if(send(clntsock, notImplemented_error, strlen(notImplemented_error), 0) != strlen(notImplemented_error)){
++        if(send(clntsock, notImplemented, strlen(notImplemented), 0) != strlen(notImplemented_error)){
+             fprint(stderr, "send failed\n");
+         }
+ 
+@@ -37,7 +37,8 @@ int notImplemented_error(char* method, char* httpVersion){
+ 
+ }
+ 
+-int process_request(char* request, int clntsock, struct sockaddr_in clntaddr){
++
++int process_request(char* request, int clntsock, struct sockaddr_in clntaddr, char* web_root){
+ 
+     char status_buf[100];
+     snprintf(status_buf, sizeof(status_buf), "200 OK");
+@@ -49,7 +50,8 @@ int process_request(char* request, int clntsock, struct sockaddr_in clntaddr){
+     
+     char* dots = strstr(requestURI, "..");
+     char *badReq = "HTTP/1.0 400 Bad Request\r\n\r\n<html><body><h1><400 Bad Request </h1></body><html>\r\n";
+-
++    
++//if the entire request is fake 
+    /*
+     * if(!method || !requestURI || !httpVersion){
+     *     snprint(status_buf, sizeof(status_buf), "400 Bad Request"); 
+@@ -71,6 +73,19 @@ int process_request(char* request, int clntsock, struct sockaddr_in clntaddr){
+      *     }
+      *     */
+      notImplemented_error(char *httpVersion, char* method, int clntsock, struct sockaddr_in clntaddr);
++     
++     int URIlen = strlent(requestURI);
++     char fpath[1024];
++     if(requestURI[URIlen -1] == '/'){
++         snprint(fpath, sizeof(fpath), "%s%sindex.html", web_root, requestURI);
++     }else{
++         snprint(fpath, sizeof(fpath), "%s%s", web_root, requestURI);
++     }
++    //check for file 404 and directory 501
++
++     FILE *reqFile = fopen(filepath, "rb");
++     if(reqFile == NULL){
++        snprintf(status_buf, sizeof(
+ 
+ } 
+ 
+@@ -130,9 +145,10 @@ int main(int argc, char* argv[]){
+         r = recv(clntsock, request, sizeof(request), MSG_WAITALL);
+     //    printf("got %d bytes of data: %s\n", r, request);
+ 
+-        }
+         
+-
++        //process request
++        //make filepath
++        
+ 
+ 
+         close(clntsock);
+-- 
+2.34.1
+
+
+From 8ab9ab046d9e0049fd8984b1a83cc35ef994b18a Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Sun, 5 May 2024 15:40:08 -0400
+Subject: [PATCH 05/11] I think i finished part 2A but I have no idea so i am
+ just going to start part B and hopen its fine
+
+---
+ http-server.c | 85 +++++++++++++++++++++++++++++++++------------------
+ 1 file changed, 55 insertions(+), 30 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index bbdcca0..27c719f 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -33,7 +33,7 @@ int notImplemented_error(char* method, char* httpVersion, int clntsock, struct s
+ 
+         fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
+     } 
+-//fclose(clntfile)
++    //fclose(clntfile)
+ 
+ }
+ 
+@@ -47,21 +47,21 @@ int process_request(char* request, int clntsock, struct sockaddr_in clntaddr, ch
+     char *method = strtok(request, token_separators);
+     char *requestURI = strtok(NULL, token_separators);
+     char *httpVersion = strtok(NULL, token_separators);
+-    
++
+     char* dots = strstr(requestURI, "..");
+     char *badReq = "HTTP/1.0 400 Bad Request\r\n\r\n<html><body><h1><400 Bad Request </h1></body><html>\r\n";
+-    
+-//if the entire request is fake 
+-   /*
+-    * if(!method || !requestURI || !httpVersion){
+-    *     snprint(status_buf, sizeof(status_buf), "400 Bad Request"); 
+-    *     fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
+-    *     if(send(clntsock, badReq, strlen(badReq), 0) != strlen(badReq)){
+-    *        fprintf(stderr, "send failed\n");
+-    *     }
+-    *     fclose(clntfile);
+-    *} */
+- 
++
++    //if the entire request is fake 
++    /*
++     * if(!method || !requestURI || !httpVersion){
++     *     snprint(status_buf, sizeof(status_buf), "400 Bad Request"); 
++     *     fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
++     *     if(send(clntsock, badReq, strlen(badReq), 0) != strlen(badReq)){
++     *        fprintf(stderr, "send failed\n");
++     *     }
++     *     fclose(clntfile);
++     *} */
++
+     /*
+      * if(dots || requestURI[0] != '/')){
+      *     snprintf(status_buf, sizeof(status_buf), "400 Bad Request");
+@@ -72,21 +72,46 @@ int process_request(char* request, int clntsock, struct sockaddr_in clntaddr, ch
+      *     fclose(clntfile):
+      *     }
+      *     */
+-     notImplemented_error(char *httpVersion, char* method, int clntsock, struct sockaddr_in clntaddr);
+-     
+-     int URIlen = strlent(requestURI);
+-     char fpath[1024];
+-     if(requestURI[URIlen -1] == '/'){
+-         snprint(fpath, sizeof(fpath), "%s%sindex.html", web_root, requestURI);
+-     }else{
+-         snprint(fpath, sizeof(fpath), "%s%s", web_root, requestURI);
+-     }
++    notImplemented_error(char *httpVersion, char* method, int clntsock, struct sockaddr_in clntaddr);
++
++    int URIlen = strlent(requestURI);
++    char fpath[1024];
++    if(requestURI[URIlen -1] == '/'){
++        snprint(fpath, sizeof(fpath), "%s%sindex.html", web_root, requestURI);
++    }else{
++        snprint(fpath, sizeof(fpath), "%s%s", web_root, requestURI);
++    }
+     //check for file 404 and directory 501
+ 
+-     FILE *reqFile = fopen(filepath, "rb");
+-     if(reqFile == NULL){
+-        snprintf(status_buf, sizeof(
++    char* notFound = "HTTP/1.0 404 Not Found\r\n\r\n<html><body><h1>404 Not Found</h1></body></html>
++        FILE *reqFile = fopen(filepath, "rb");
++    if(reqFile == NULL){
++        snprintf(status_buf, sizeof(status_buf), "404 Not Found");
++        fprintf(stderr, "%s\"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, status_buf);
++        if(send(clntsock, notFound, strlen(notFound), 0) != strlen(notFound)){
++            fprintf(stderr, "send failed\n");
++            //fclose(clntfile);
++        }
++
++        fclose(reqFile);
++    }
++
++    fprintf(stdout, "%s \"%s %s %s\" %s\n", inet_ntoa(clntadder.sin_addr),method, requestURI, httpVersion, status_buf);
++
++    //send header 
+ 
++    //send file 
++    char buf[4096];
++    int len; 
++    while((len = fread(buf, 1, sizeof(buf), reqFile))>0){
++        if(send(clntsock, buf, len, 0) != len){
++            fprintf(stderr, "send failed\n"); 
++            fclose(reqFile);
++            //fclose(clntFile);
++        }
++    }
++    fclose(reqFile);
++    fclose(clntFile);
+ } 
+ 
+ int main(int argc, char* argv[]){
+@@ -141,14 +166,14 @@ int main(int argc, char* argv[]){
+             continue;
+         } 
+ 
+-      //  printf("accepted connection\n"); 
++        //  printf("accepted connection\n"); 
+         r = recv(clntsock, request, sizeof(request), MSG_WAITALL);
+-    //    printf("got %d bytes of data: %s\n", r, request);
++        //    printf("got %d bytes of data: %s\n", r, request);
++
+ 
+-        
+         //process request
+         //make filepath
+-        
++
+ 
+ 
+         close(clntsock);
+-- 
+2.34.1
+
+
+From 5829661421426e4f5f81038472e6d905b072c854 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Sun, 5 May 2024 21:11:27 -0400
+Subject: [PATCH 06/11] finished but no testing yet. finished part 2A and 2B
+ like all the way
+
+---
+ http-server.c | 403 ++++++++++++++++++++++++++++++++++++--------------
+ 1 file changed, 289 insertions(+), 114 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index 27c719f..38c1620 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -9,114 +9,339 @@
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ 
++const char* 501_MSG = "HTTP/1.0 501 Not Implemented\r\n\r\n"
++                      "<html><body><h1>501 Not Implemented</h1></body></html>\r\n";
+ 
++const char* 400_MSG = "HTTP/1.0 400 Bad Request\r\n\r\n"
++                      "<html><body><h1>400 Bad Request</h1></body><html>\r\n";
++
++const char* 404_MSG = "HTTP/1.0 404 Not Found\r\n\r\n"
++                      "<html><body><h1>404 Not Found</h1></body></html>\r\n";
++
++const char* 200_MSG = "HTTP/1.0 200 OK\r\n\r\n";
+ 
+ static void die(const char *msg){
+     perror(msg);
+     exit(1);
+ }
+ 
++int connect_to_mdb(char* mdb_lookup_host, int mdb_port){
++    //get mdb server IP
++    struct hostent *he;
++    if ((he = gethostbyname(mdblookuphost)) == NULL) {
++        die("gethostbyname failed");
++    }
++    char *mdbip = inet_ntoa(*(struct in_addr *)he->h_addr);
+ 
+-int notImplemented_error(char* method, char* httpVersion, int clntsock, struct sockaddr_in clntaddr){
+-    char* notImplemented = "HTTP/1.0 501 Not Implemented\r\n\r\n<html><body><h1>501 Not Implemented</h1></body></html>\r\n";
++    //mdb sock
++    int mdbsock;
++    if ((mdbsock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
++        die("socket failed");
+ 
+-    int meth = strcmp(method, "GET");
+-    int http10 = strcmp(httpVersion, "HTTP/1.0");
+-    int http11 = strcmp(httpVersion, "HTTP/1.1");
++    struct sockaddr_in mdbaddr;
++    memset(&mdbaddr, 0, sizeof(mdbaddr)); // must zero out the structure
++    mdbaddr.sin_family      = AF_INET;
++    mdbaddr.sin_addr.s_addr = inet_addr(mdbip);
++    mdbaddr.sin_port        = htons(mdblookupport); // must be in network byte order
+ 
+-    char *buf = "200 OK";
+-    if((meth != 0) || ((http10 || http11) != 0)){
+-        snprint(buf, sizeof(buf), "501 Not Implemented");
+-        if(send(clntsock, notImplemented, strlen(notImplemented), 0) != strlen(notImplemented_error)){
+-            fprint(stderr, "send failed\n");
+-        }
++    // Establish a TCP connection to the mdbserver
+ 
+-        fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
+-    } 
+-    //fclose(clntfile)
++    if (connect(mdbsock, (struct sockaddr *) &mdbaddr, sizeof(mdbaddr)) < 0)
++        die("connect failed");
++
++    return mdbsock;
+ 
+ }
+ 
++struct app_state{
++    int server_sock;
++    int mdb_sock;
++    FILE* mdb_file;
++    char* web_root;
++}
++
++
++struct app_state* initialize_app(int server_port, char* web_root, char* mdb_lookup_host, int mdb_port){
++    struct app_state* s = malloc(sizeof(struct app_state));
++    // to do : die if malloc fails 
++    s->mdb_sock = connect_to_mdb(mdb_lookup_host, mdb_port);
++    s->mdb_file = fdopen(s->mdb_sock, "r");
++
++    int servsock;
++    if ((servsock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
++        die("socket failed");
+ 
+-int process_request(char* request, int clntsock, struct sockaddr_in clntaddr, char* web_root){
++    // Construct local address structure
++
++    struct sockaddr_in servaddr;
++    memset(&servaddr, 0, sizeof(servaddr));
++    servaddr.sin_family = AF_INET;
++    servaddr.sin_addr.s_addr = htonl(INADDR_ANY); // any network interface
++    servaddr.sin_port = htons(server_port);
++
++    // Bind to the local address
++
++    if (bind(servsock, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0)
++        die("bind failed");
++
++    // Start listening for incoming connections
++
++    if (listen(servsock, 5 /* queue size for connection requests */ ) < 0)
++        die("listen failed");
+ 
+-    char status_buf[100];
+-    snprintf(status_buf, sizeof(status_buf), "200 OK");
++    s->server_sock = servsock;
+ 
++    return s;
++}
++
++void shutdown_app(struct app_state* s){
++    close(s->mdb_sock);
++    close(s->server_sock);
++}
++
++void accept_request(struct app_state* s){
++    char request[2000];
++    int r; 
++
++    // Accept an incoming connection
++
++    struct sockaddr_in client_addr;
++    socklen_t client_len = sizeof(client_addr); // initialize the in-out parameter
++    int client_sock = accept(
++            s->server_sock, 
++            (struct sockaddr *) &client_addr,
++            &client_len);
++
++    if (client_sock < 0){
++        fprintf(stderr, "accept failed\n");
++        return;
++    } 
++
++    FILE *client = fdopen(client_sock, "r");
++    if(client == NULL){
++        fprintf(stderr, "No request recieved\n");
++        close(client_sock);
++        return;
++    }
++
++    if (fgets(request, sizeof(request), client) == NULL){
++        fprintf(stderr, "No request recieved\n");
++        return;
++    }
++    char* client_ip = inet_ntoa(client_addr.sin_addr);
+     char *token_separators = "\t \r\n"; // tab, space, new line
+-    char *method = strtok(request, token_separators);
++    char *method = strtok(requestBuf, token_separators);
+     char *requestURI = strtok(NULL, token_separators);
+     char *httpVersion = strtok(NULL, token_separators);
+ 
+-    char* dots = strstr(requestURI, "..");
+-    char *badReq = "HTTP/1.0 400 Bad Request\r\n\r\n<html><body><h1><400 Bad Request </h1></body><html>\r\n";
+-
+-    //if the entire request is fake 
+-    /*
+-     * if(!method || !requestURI || !httpVersion){
+-     *     snprint(status_buf, sizeof(status_buf), "400 Bad Request"); 
+-     *     fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
+-     *     if(send(clntsock, badReq, strlen(badReq), 0) != strlen(badReq)){
+-     *        fprintf(stderr, "send failed\n");
+-     *     }
+-     *     fclose(clntfile);
+-     *} */
+-
+-    /*
+-     * if(dots || requestURI[0] != '/')){
+-     *     snprintf(status_buf, sizeof(status_buf), "400 Bad Request");
+-     *     fprintf(stderr, "%s \"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, buf);
+-     *     if(send(clntsock, badReq, strlen(badReq), 0) != strlen(badReq)){
+-     *        fprintf(stderr, "send failed\n");
+-     *     }
+-     *     fclose(clntfile):
+-     *     }
+-     *     */
+-    notImplemented_error(char *httpVersion, char* method, int clntsock, struct sockaddr_in clntaddr);
+-
+-    int URIlen = strlent(requestURI);
++    int is_get = strcmp(method, "GET");
++    int http10 = strcmp(httpVersion, "HTTP/1.0");
++    int http11 = strcmp(httpVersion, "HTTP/1.1");
++
++    if(!is_get || (!http10 && !http11)){
++        r = send(client_sock, 501_MSG, strlen(501_MSG), 0);
++        if(r != strlen(501_MSG)){
++            fprintf(stderr, "send failed\n");
++        }
++        fprintf(stderr,
++                "%s \"%s %s %s\" 501 Not Implemented\n",
++                client_ip,
++                method,
++                requestURI,
++                httpVersion);
++    } else {
++        process_request(s, client_sock, client_ip, method, requestURI); 
++    }
++
++    fclose(client);
++}
++
++void process_dyn_request(struct app_state s, int client_sock, char* client_ip, char* method, char* requestURI){
++    const char *form =
++        "<h1>mdb-lookup</h1>\n"
++        "<p>\n"
++        "<form method=GET action=/mdb-lookup>\n"
++        "lookup: <input type=text name=key>\n"
++        "<input type=submit>\n"
++        "</form>\n"
++        "<p>\n";
++
++    fprintf(stderr,
++            "%s \"%s %s %s\" 200 OK\n",
++            client_ip,
++            method,
++            requestURI,
++            httpVersion);
++
++    if (send(client_sock, 200_MSG, strlen(200_MSG), 0) != strlen(200_MSG)){
++        fprintf(stderr, "send failed\n");
++        return;
++    }
++    if (send(client_sock, form, strlen(form), 0) != strlen(form)){
++        fprintf(stderr, "send failed\n");
++        return;
++    }
++
++    char *key_token = "?key=";
++    char* key = strstr(requestURI, key_token);
++    if(key == NULL){
++        return;
++    }
++
++    key += strlen(key_token);
++    char search[1000];
++    fprintf(stderr,"looking up [%s]: ", key);
++    snprintf(search, sizeof(search), "%s\n", key); 
++    if (send(s->mdb_sock, search, strlen(search), 0) != strlen(search)){
++        fprintf(stderr, "send failed\n");
++        return;
++    }   
++    char message[100];
++    char *tabletop = 
++        "<p>\n"
++        "<table border=\"\">\n"
++        "<tbody>\n";
++    if (send(client_sock, tabletop, strlen(tabletop), 0) != strlen(tabletop)){
++        fprintf(stderr, "send failed\n");
++        return;
++    }
++
++    int rowNumber = 0;
++    char rowBuf[200];
++    while(fgets(message, sizeof(message), s->mdb_file) != NULL){
++        if(message[0] == '\n'){
++            break;
++        }
++        if(rowNumber % 2 == 0){
++            snprintf(rowBuf, sizeof(rowBuf), "<tr>\n<td>%s</td>\n</tr>\n", message);
++        }else{
++            snprintf(rowBuf, sizeof(rowBuf), "<tr>\n<td bgcolor=\"yellow\">%s</td>\n</tr>\n", message);
++        }        
++        if (send(client_sock, rowBuf, strlen(rowBuf), 0) != strlen(rowBuf)){
++            fprintf(stderr, "send failed\n");
++            return;
++        }
++        rowNumber++;
++    }
++    char *tablebottom = 
++        "</tbody>\n"
++        "</table>\n"
++        "</p>\n"
++        "</body>\n"
++        "</html>\n";
++    if (send(client_sock, tablebottom, strlen(tablebottom), 0) != strlen(tablebottom)){
++        fprintf(stderr, "send failed\n");
++        return;
++    }
++}
++
++void process_file_request(struct app_state s, int client_sock, char* client_ip, char* method, char* requestURI){
++    int URIlen = strlen(requestURI);
+     char fpath[1024];
+     if(requestURI[URIlen -1] == '/'){
+-        snprint(fpath, sizeof(fpath), "%s%sindex.html", web_root, requestURI);
++        snprint(fpath, sizeof(fpath), "%s%sindex.html", s->web_root, requestURI);
+     }else{
+-        snprint(fpath, sizeof(fpath), "%s%s", web_root, requestURI);
++        snprint(fpath, sizeof(fpath), "%s%s", s->web_root, requestURI);
+     }
+-    //check for file 404 and directory 501
+ 
+-    char* notFound = "HTTP/1.0 404 Not Found\r\n\r\n<html><body><h1>404 Not Found</h1></body></html>
+-        FILE *reqFile = fopen(filepath, "rb");
++
++    struct stat statbuf;
++    if (stat(fpath, &statbuf) != 0){
++        fprintf(stderr,
++                "%s \"%s %s %s\" 404 Not Found\n",
++                client_ip,
++                method,
++                requestURI,
++                httpVersion);
++        if (send(client_sock, 404_MSG, strlen(404_MSG), 0) != strlen(404_MSG)){
++            fprintf(stderr, "send failed\n");
++        }
++        return;
++    }		
++
++    if(S_ISDIR(statbuf.st_mode)){
++        fprintf(stderr,
++                "%s \"%s %s %s\" 501 Not Implemented\n",
++                client_ip,
++                method,
++                requestURI,
++                httpVersion);
++        if (send(client_sock, 501_MSG, strlen(501_MSG), 0) != strlen(501_MSG)){
++            fprintf(stderr, "send failed\n");
++        }
++        return;
++    }
++    FILE *reqFile = fopen(filepath, "rb");
+     if(reqFile == NULL){
+-        snprintf(status_buf, sizeof(status_buf), "404 Not Found");
+-        fprintf(stderr, "%s\"%s %s %s\" %s\n", inet_ntoa(clntaddr.sin_addr), method, requestURI, httpVersion, status_buf);
+-        if(send(clntsock, notFound, strlen(notFound), 0) != strlen(notFound)){
++        fprintf(stderr,
++                "%s \"%s %s %s\" 404 Not Found\n",
++                client_ip,
++                method,
++                requestURI,
++                httpVersion);
++        if (send(client_sock, 404_MSG, strlen(404_MSG), 0) != strlen(404_MSG)){
+             fprintf(stderr, "send failed\n");
+-            //fclose(clntfile);
+         }
+-
+-        fclose(reqFile);
++        return;
+     }
+ 
+-    fprintf(stdout, "%s \"%s %s %s\" %s\n", inet_ntoa(clntadder.sin_addr),method, requestURI, httpVersion, status_buf);
++    fprintf(stderr,
++            "%s \"%s %s %s\" 200 OK\n",
++            client_ip,
++            method,
++            requestURI,
++            httpVersion);
+ 
+     //send header 
++    if (send(client_sock, 200_MSG, strlen(200_MSG), 0) != strlen(200_MSG)){
++        fprintf(stderr, "send failed\n");
++        fclose(reqFile);
++        return;
++    }
+ 
+     //send file 
+     char buf[4096];
+     int len; 
+     while((len = fread(buf, 1, sizeof(buf), reqFile))>0){
+-        if(send(clntsock, buf, len, 0) != len){
++        if(send(client_sock, buf, len, 0) != len){
+             fprintf(stderr, "send failed\n"); 
+             fclose(reqFile);
+-            //fclose(clntFile);
++            return;
+         }
+     }
+     fclose(reqFile);
+-    fclose(clntFile);
++}
++
++void process_request(struct app_state* s,int client_sock, char* client_ip, char* method, char* requestURI){
++
++    char* dots = strstr(requestURI, "..");
++
++
++    if(dots || requestURI[0] != '/'){
++        fprintf(stderr,
++                "%s \"%s %s %s\" 400 Bad Request\n",
++                client_ip,
++                method,
++                requestURI,
++                httpVersion);
++        if(send(client_sock, 400_MSG, strlen(400_MSG), 0) != strlen(400_MSG)){
++            fprintf(stderr, "send failed\n");
++        }
++        return;
++    }
++
++    char* dyn_path = "/mdb-lookup";
++    if(strncmp(requestURI, dyn_path, strlen(dyn_path))){
++        process_dyn_request(s, client_sock, client_ip, method, requestURI);
++    } else {
++        process_file_request(s, client_sock, client_ip, method, requestURI);
++    }
+ } 
+ 
+ int main(int argc, char* argv[]){
+     if(argc != 5){
+-        fprintf(stderr, "usage: http-client <host name> <port number> <file path    >\n");
++        fprintf(stderr, "usage: %s <server-port> <web-root> <mdb-lookup-host> <mdb-lookup-port>\r\n", argv[0]);
++        exit(1);
+     }
+ 
+ 
+@@ -125,63 +350,13 @@ int main(int argc, char* argv[]){
+     char* mdb_host = argv[3];
+     int mdb_port = atoi(argv[4]);
+ 
+-    int servsock;
+-    if ((servsock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+-        die("socket failed");
+-
+-    // Construct local address structure
+-
+-    struct sockaddr_in servaddr;
+-    memset(&servaddr, 0, sizeof(servaddr));
+-    servaddr.sin_family = AF_INET;
+-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY); // any network interface
+-    servaddr.sin_port = htons(server_port);
+-
+-    // Bind to the local address
+-
+-    if (bind(servsock, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0)
+-        die("bind failed");
+-
+-    // Start listening for incoming connections
+-
+-    if (listen(servsock, 5 /* queue size for connection requests */ ) < 0)
+-        die("listen failed");
+-
+-    int clntsock;
+-    socklen_t clntlen;
+-    struct sockaddr_in clntaddr;
+-
+-    char request[2000];
+-    int r; 
++    struct app_state* app = initialize_app(server_port, web_root, mdb_host, mdb_port);
+ 
+     while (1) {
+-
+-        // Accept an incoming connection
+-
+-        clntlen = sizeof(clntaddr); // initialize the in-out parameter
+-
+-        if ((clntsock = accept(servsock,
+-                        (struct sockaddr *) &clntaddr, &clntlen)) < 0){
+-            die("accept failed\n");
+-            continue;
+-        } 
+-
+-        //  printf("accepted connection\n"); 
+-        r = recv(clntsock, request, sizeof(request), MSG_WAITALL);
+-        //    printf("got %d bytes of data: %s\n", r, request);
+-
+-
+-        //process request
+-        //make filepath
+-
+-
+-
+-        close(clntsock);
+-
++        accept_request(app);
+     }
+ 
+-
+-
++    shutdown_app(app);
+ }
+ 
+ 
+-- 
+2.34.1
+
+
+From 167e0da2ea097b65878f0713ef6fdc56f1a77eba Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Sun, 5 May 2024 21:48:20 -0400
+Subject: [PATCH 07/11] finished fixing all the errors but still have not
+ tested
+
+---
+ http-server.c | 203 ++++++++++++++++++++++----------------------------
+ 1 file changed, 89 insertions(+), 114 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index 38c1620..c33f746 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -8,17 +8,18 @@
+ #include <arpa/inet.h>
+ #include <sys/types.h>
+ #include <sys/socket.h>
++#include <netdb.h>
+ 
+-const char* 501_MSG = "HTTP/1.0 501 Not Implemented\r\n\r\n"
++const char* MSG_501 = "HTTP/1.0 501 Not Implemented\r\n\r\n"
+                       "<html><body><h1>501 Not Implemented</h1></body></html>\r\n";
+ 
+-const char* 400_MSG = "HTTP/1.0 400 Bad Request\r\n\r\n"
++const char* MSG_400 = "HTTP/1.0 400 Bad Request\r\n\r\n"
+                       "<html><body><h1>400 Bad Request</h1></body><html>\r\n";
+ 
+-const char* 404_MSG = "HTTP/1.0 404 Not Found\r\n\r\n"
++const char* MSG_404 = "HTTP/1.0 404 Not Found\r\n\r\n"
+                       "<html><body><h1>404 Not Found</h1></body></html>\r\n";
+ 
+-const char* 200_MSG = "HTTP/1.0 200 OK\r\n\r\n";
++const char* MSG_200 = "HTTP/1.0 200 OK\r\n\r\n";
+ 
+ static void die(const char *msg){
+     perror(msg);
+@@ -28,7 +29,7 @@ static void die(const char *msg){
+ int connect_to_mdb(char* mdb_lookup_host, int mdb_port){
+     //get mdb server IP
+     struct hostent *he;
+-    if ((he = gethostbyname(mdblookuphost)) == NULL) {
++    if ((he = gethostbyname(mdb_lookup_host)) == NULL) {
+         die("gethostbyname failed");
+     }
+     char *mdbip = inet_ntoa(*(struct in_addr *)he->h_addr);
+@@ -42,7 +43,7 @@ int connect_to_mdb(char* mdb_lookup_host, int mdb_port){
+     memset(&mdbaddr, 0, sizeof(mdbaddr)); // must zero out the structure
+     mdbaddr.sin_family      = AF_INET;
+     mdbaddr.sin_addr.s_addr = inet_addr(mdbip);
+-    mdbaddr.sin_port        = htons(mdblookupport); // must be in network byte order
++    mdbaddr.sin_port        = htons(mdb_port); // must be in network byte order
+ 
+     // Establish a TCP connection to the mdbserver
+ 
+@@ -58,7 +59,7 @@ struct app_state{
+     int mdb_sock;
+     FILE* mdb_file;
+     char* web_root;
+-}
++};
+ 
+ 
+ struct app_state* initialize_app(int server_port, char* web_root, char* mdb_lookup_host, int mdb_port){
+@@ -99,64 +100,7 @@ void shutdown_app(struct app_state* s){
+     close(s->server_sock);
+ }
+ 
+-void accept_request(struct app_state* s){
+-    char request[2000];
+-    int r; 
+-
+-    // Accept an incoming connection
+-
+-    struct sockaddr_in client_addr;
+-    socklen_t client_len = sizeof(client_addr); // initialize the in-out parameter
+-    int client_sock = accept(
+-            s->server_sock, 
+-            (struct sockaddr *) &client_addr,
+-            &client_len);
+-
+-    if (client_sock < 0){
+-        fprintf(stderr, "accept failed\n");
+-        return;
+-    } 
+-
+-    FILE *client = fdopen(client_sock, "r");
+-    if(client == NULL){
+-        fprintf(stderr, "No request recieved\n");
+-        close(client_sock);
+-        return;
+-    }
+-
+-    if (fgets(request, sizeof(request), client) == NULL){
+-        fprintf(stderr, "No request recieved\n");
+-        return;
+-    }
+-    char* client_ip = inet_ntoa(client_addr.sin_addr);
+-    char *token_separators = "\t \r\n"; // tab, space, new line
+-    char *method = strtok(requestBuf, token_separators);
+-    char *requestURI = strtok(NULL, token_separators);
+-    char *httpVersion = strtok(NULL, token_separators);
+-
+-    int is_get = strcmp(method, "GET");
+-    int http10 = strcmp(httpVersion, "HTTP/1.0");
+-    int http11 = strcmp(httpVersion, "HTTP/1.1");
+-
+-    if(!is_get || (!http10 && !http11)){
+-        r = send(client_sock, 501_MSG, strlen(501_MSG), 0);
+-        if(r != strlen(501_MSG)){
+-            fprintf(stderr, "send failed\n");
+-        }
+-        fprintf(stderr,
+-                "%s \"%s %s %s\" 501 Not Implemented\n",
+-                client_ip,
+-                method,
+-                requestURI,
+-                httpVersion);
+-    } else {
+-        process_request(s, client_sock, client_ip, method, requestURI); 
+-    }
+-
+-    fclose(client);
+-}
+-
+-void process_dyn_request(struct app_state s, int client_sock, char* client_ip, char* method, char* requestURI){
++void process_dyn_request(struct app_state* s, int client_sock, char *logLine, char* requestURI){
+     const char *form =
+         "<h1>mdb-lookup</h1>\n"
+         "<p>\n"
+@@ -166,14 +110,9 @@ void process_dyn_request(struct app_state s, int client_sock, char* client_ip, c
+         "</form>\n"
+         "<p>\n";
+ 
+-    fprintf(stderr,
+-            "%s \"%s %s %s\" 200 OK\n",
+-            client_ip,
+-            method,
+-            requestURI,
+-            httpVersion);
++    fprintf(stderr, "%s 200 OK\n", logLine);
+ 
+-    if (send(client_sock, 200_MSG, strlen(200_MSG), 0) != strlen(200_MSG)){
++    if (send(client_sock, MSG_200, strlen(MSG_200), 0) != strlen(MSG_200)){
+         fprintf(stderr, "send failed\n");
+         return;
+     }
+@@ -235,65 +174,45 @@ void process_dyn_request(struct app_state s, int client_sock, char* client_ip, c
+     }
+ }
+ 
+-void process_file_request(struct app_state s, int client_sock, char* client_ip, char* method, char* requestURI){
++void process_file_request(struct app_state* s, int client_sock, char *logLine, char* requestURI){
+     int URIlen = strlen(requestURI);
+     char fpath[1024];
+     if(requestURI[URIlen -1] == '/'){
+-        snprint(fpath, sizeof(fpath), "%s%sindex.html", s->web_root, requestURI);
++        snprintf(fpath, sizeof(fpath), "%s%sindex.html", s->web_root, requestURI);
+     }else{
+-        snprint(fpath, sizeof(fpath), "%s%s", s->web_root, requestURI);
++        snprintf(fpath, sizeof(fpath), "%s%s", s->web_root, requestURI);
+     }
+ 
+ 
+     struct stat statbuf;
+     if (stat(fpath, &statbuf) != 0){
+-        fprintf(stderr,
+-                "%s \"%s %s %s\" 404 Not Found\n",
+-                client_ip,
+-                method,
+-                requestURI,
+-                httpVersion);
+-        if (send(client_sock, 404_MSG, strlen(404_MSG), 0) != strlen(404_MSG)){
++        fprintf(stderr, "%s404 Not Found\n", logLine);
++        if (send(client_sock, MSG_404, strlen(MSG_404), 0) != strlen(MSG_404)){
+             fprintf(stderr, "send failed\n");
+         }
+         return;
+     }		
+ 
+     if(S_ISDIR(statbuf.st_mode)){
+-        fprintf(stderr,
+-                "%s \"%s %s %s\" 501 Not Implemented\n",
+-                client_ip,
+-                method,
+-                requestURI,
+-                httpVersion);
+-        if (send(client_sock, 501_MSG, strlen(501_MSG), 0) != strlen(501_MSG)){
++        fprintf(stderr, "%s501 Not Implemented\n", logLine);
++        if (send(client_sock, MSG_501, strlen(MSG_501), 0) != strlen(MSG_501)){
+             fprintf(stderr, "send failed\n");
+         }
+         return;
+     }
+-    FILE *reqFile = fopen(filepath, "rb");
++    FILE *reqFile = fopen(fpath, "rb");
+     if(reqFile == NULL){
+-        fprintf(stderr,
+-                "%s \"%s %s %s\" 404 Not Found\n",
+-                client_ip,
+-                method,
+-                requestURI,
+-                httpVersion);
+-        if (send(client_sock, 404_MSG, strlen(404_MSG), 0) != strlen(404_MSG)){
++        fprintf(stderr, "%s404 Not Found\n", logLine);
++        if (send(client_sock, MSG_404, strlen(MSG_404), 0) != strlen(MSG_404)){
+             fprintf(stderr, "send failed\n");
+         }
+         return;
+     }
+ 
+-    fprintf(stderr,
+-            "%s \"%s %s %s\" 200 OK\n",
+-            client_ip,
+-            method,
+-            requestURI,
+-            httpVersion);
++    fprintf(stderr, "%s200 OK\n", logLine);
+ 
+     //send header 
+-    if (send(client_sock, 200_MSG, strlen(200_MSG), 0) != strlen(200_MSG)){
++    if (send(client_sock, MSG_200, strlen(MSG_200), 0) != strlen(MSG_200)){
+         fprintf(stderr, "send failed\n");
+         fclose(reqFile);
+         return;
+@@ -312,19 +231,14 @@ void process_file_request(struct app_state s, int client_sock, char* client_ip,
+     fclose(reqFile);
+ }
+ 
+-void process_request(struct app_state* s,int client_sock, char* client_ip, char* method, char* requestURI){
++void process_request(struct app_state* s,int client_sock, char *logLine, char* requestURI){
+ 
+     char* dots = strstr(requestURI, "..");
+ 
+ 
+     if(dots || requestURI[0] != '/'){
+-        fprintf(stderr,
+-                "%s \"%s %s %s\" 400 Bad Request\n",
+-                client_ip,
+-                method,
+-                requestURI,
+-                httpVersion);
+-        if(send(client_sock, 400_MSG, strlen(400_MSG), 0) != strlen(400_MSG)){
++        fprintf(stderr, "%s400 Bad Request\n", logLine);
++        if(send(client_sock, MSG_400, strlen(MSG_400), 0) != strlen(MSG_400)){
+             fprintf(stderr, "send failed\n");
+         }
+         return;
+@@ -332,12 +246,73 @@ void process_request(struct app_state* s,int client_sock, char* client_ip, char*
+ 
+     char* dyn_path = "/mdb-lookup";
+     if(strncmp(requestURI, dyn_path, strlen(dyn_path))){
+-        process_dyn_request(s, client_sock, client_ip, method, requestURI);
++        process_dyn_request(s, client_sock, logLine, requestURI);
+     } else {
+-        process_file_request(s, client_sock, client_ip, method, requestURI);
++        process_file_request(s, client_sock, logLine, requestURI);
+     }
+ } 
+ 
++void accept_request(struct app_state* s){
++    char request[2000];
++    int r; 
++
++    // Accept an incoming connection
++
++    struct sockaddr_in client_addr;
++    socklen_t client_len = sizeof(client_addr); // initialize the in-out parameter
++    int client_sock = accept(
++            s->server_sock, 
++            (struct sockaddr *) &client_addr,
++            &client_len);
++
++    if (client_sock < 0){
++        fprintf(stderr, "accept failed\n");
++        return;
++    } 
++
++    FILE *client = fdopen(client_sock, "r");
++    if(client == NULL){
++        fprintf(stderr, "No request recieved\n");
++        close(client_sock);
++        return;
++    }
++
++    if (fgets(request, sizeof(request), client) == NULL){
++        fprintf(stderr, "No request recieved\n");
++        return;
++    }
++    char* client_ip = inet_ntoa(client_addr.sin_addr);
++    char *token_separators = "\t \r\n"; // tab, space, new line
++    char *method = strtok(request, token_separators);
++    char *requestURI = strtok(NULL, token_separators);
++    char *httpVersion = strtok(NULL, token_separators);
++    
++    char logLine[2048];
++   snprintf(logLine, 
++           sizeof(logLine), 
++           "%s \"%s %s %s\"",
++           client_ip,
++           method,
++           requestURI, 
++           httpVersion);
++                        
++    int is_get = strcmp(method, "GET");
++    int http10 = strcmp(httpVersion, "HTTP/1.0");
++    int http11 = strcmp(httpVersion, "HTTP/1.1");
++
++    if(!is_get || (!http10 && !http11)){
++        r = send(client_sock, MSG_501, strlen(MSG_501), 0);
++        if(r != strlen(MSG_501)){
++            fprintf(stderr, "send failed\n");
++        }
++        fprintf(stderr, "%s 501 Not Implemented\n", logLine);
++    } else {
++        process_request(s, client_sock, logLine, requestURI); 
++    }
++
++    fclose(client);
++}
++
+ int main(int argc, char* argv[]){
+     if(argc != 5){
+         fprintf(stderr, "usage: %s <server-port> <web-root> <mdb-lookup-host> <mdb-lookup-port>\r\n", argv[0]);
+-- 
+2.34.1
+
+
+From 3712ce325ba2f011b6179383c1d9057baa45a37e Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Mon, 6 May 2024 18:16:54 -0400
+Subject: [PATCH 08/11] DONEgit add .git add . JUST HAVE TO REMOVE DEBUGGING
+ STATEMENTS
+
+---
+ http-server.c | 67 ++++++++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 58 insertions(+), 9 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index c33f746..8685326 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -9,6 +9,7 @@
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <netdb.h>
++#include <errno.h>
+ 
+ const char* MSG_501 = "HTTP/1.0 501 Not Implemented\r\n\r\n"
+                       "<html><body><h1>501 Not Implemented</h1></body></html>\r\n";
+@@ -67,7 +68,8 @@ struct app_state* initialize_app(int server_port, char* web_root, char* mdb_look
+     // to do : die if malloc fails 
+     s->mdb_sock = connect_to_mdb(mdb_lookup_host, mdb_port);
+     s->mdb_file = fdopen(s->mdb_sock, "r");
+-
++    s->web_root = web_root;
++    fprintf(stderr, "%s", s->web_root);
+     int servsock;
+     if ((servsock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+         die("socket failed");
+@@ -176,17 +178,58 @@ void process_dyn_request(struct app_state* s, int client_sock, char *logLine, ch
+ 
+ void process_file_request(struct app_state* s, int client_sock, char *logLine, char* requestURI){
+     int URIlen = strlen(requestURI);
++    fprintf(stderr, "requestURI:%s\n", requestURI);
+     char fpath[1024];
+     if(requestURI[URIlen -1] == '/'){
+         snprintf(fpath, sizeof(fpath), "%s%sindex.html", s->web_root, requestURI);
++        fprintf(stderr, "used index.html");
+     }else{
+         snprintf(fpath, sizeof(fpath), "%s%s", s->web_root, requestURI);
++        fprintf(stderr, "not index.html\n");
++        fprintf(stderr, "%s", s->web_root);
++    }
++    fprintf(stderr, "Constructed file path: %s\n", fpath);
++    if(fpath[0] == '\0'){
++        fprintf(stderr, "empty file path\n");
+     }
+-
+ 
+     struct stat statbuf;
++    int statOutput = stat(fpath, &statbuf);
++
++    fprintf(stderr, "Constructed file path: %s\n", fpath);
++    if(statOutput == -1) {
++   switch(errno) {
++   case EACCES:
++       // Add code or at least 
++       fprintf(stderr, "EACCES");
++       break;
++
++   case EIO:
++       // ...
++       fprintf(stderr, "EIO");
++       break;
++
++   case ELOOP:
++       // ...
++       fprintf(stderr, "ELOOP");
++       break;
++   case ENAMETOOLONG:
++       // ...
++       fprintf(stderr, "ENAMETOOLONG");
++       // Do this to all possible errno's for the stat
++       // ...
++   case ENOENT:
++       // ...
++       fprintf(stderr, "ENOENT");
++       break;
++   case ENOTDIR:
++       fprintf(stderr, "ENOTDIR");    
++   }
++}
++
++   // fprintf(stderr, "%d", statOutput);
+     if (stat(fpath, &statbuf) != 0){
+-        fprintf(stderr, "%s404 Not Found\n", logLine);
++        fprintf(stderr, "%s404 Not Found stat function\n", logLine);
+         if (send(client_sock, MSG_404, strlen(MSG_404), 0) != strlen(MSG_404)){
+             fprintf(stderr, "send failed\n");
+         }
+@@ -194,7 +237,7 @@ void process_file_request(struct app_state* s, int client_sock, char *logLine, c
+     }		
+ 
+     if(S_ISDIR(statbuf.st_mode)){
+-        fprintf(stderr, "%s501 Not Implemented\n", logLine);
++        fprintf(stderr, "%s501 Not Implemented directory issue\n", logLine);
+         if (send(client_sock, MSG_501, strlen(MSG_501), 0) != strlen(MSG_501)){
+             fprintf(stderr, "send failed\n");
+         }
+@@ -202,7 +245,7 @@ void process_file_request(struct app_state* s, int client_sock, char *logLine, c
+     }
+     FILE *reqFile = fopen(fpath, "rb");
+     if(reqFile == NULL){
+-        fprintf(stderr, "%s404 Not Found\n", logLine);
++        fprintf(stderr, "%s404 Not Found reFile null\n", logLine);
+         if (send(client_sock, MSG_404, strlen(MSG_404), 0) != strlen(MSG_404)){
+             fprintf(stderr, "send failed\n");
+         }
+@@ -217,11 +260,13 @@ void process_file_request(struct app_state* s, int client_sock, char *logLine, c
+         fclose(reqFile);
+         return;
+     }
++    fprintf(stderr, "header: %s", MSG_200);
+ 
+     //send file 
+     char buf[4096];
+     int len; 
+     while((len = fread(buf, 1, sizeof(buf), reqFile))>0){
++        fprintf(stderr, "%s", buf);
+         if(send(client_sock, buf, len, 0) != len){
+             fprintf(stderr, "send failed\n"); 
+             fclose(reqFile);
+@@ -245,7 +290,9 @@ void process_request(struct app_state* s,int client_sock, char *logLine, char* r
+     }
+ 
+     char* dyn_path = "/mdb-lookup";
+-    if(strncmp(requestURI, dyn_path, strlen(dyn_path))){
++    int strncmpNum = strncmp(requestURI, dyn_path, strlen(dyn_path));
++    fprintf(stderr, "%d", strncmpNum);
++    if(strncmpNum == 0){
+         process_dyn_request(s, client_sock, logLine, requestURI);
+     } else {
+         process_file_request(s, client_sock, logLine, requestURI);
+@@ -281,6 +328,7 @@ void accept_request(struct app_state* s){
+         fprintf(stderr, "No request recieved\n");
+         return;
+     }
++    fprintf(stderr, "original request: %s", request);
+     char* client_ip = inet_ntoa(client_addr.sin_addr);
+     char *token_separators = "\t \r\n"; // tab, space, new line
+     char *method = strtok(request, token_separators);
+@@ -296,16 +344,16 @@ void accept_request(struct app_state* s){
+            requestURI, 
+            httpVersion);
+                         
+-    int is_get = strcmp(method, "GET");
++    char* is_get = strstr(method, "GET");
+     int http10 = strcmp(httpVersion, "HTTP/1.0");
+     int http11 = strcmp(httpVersion, "HTTP/1.1");
+ 
+-    if(!is_get || (!http10 && !http11)){
++    if(!is_get || (http10 && http11)){
+         r = send(client_sock, MSG_501, strlen(MSG_501), 0);
+         if(r != strlen(MSG_501)){
+             fprintf(stderr, "send failed\n");
+         }
+-        fprintf(stderr, "%s 501 Not Implemented\n", logLine);
++        fprintf(stderr, "%s 501 Not Implemented method and version\n", logLine);
+     } else {
+         process_request(s, client_sock, logLine, requestURI); 
+     }
+@@ -326,6 +374,7 @@ int main(int argc, char* argv[]){
+     int mdb_port = atoi(argv[4]);
+ 
+     struct app_state* app = initialize_app(server_port, web_root, mdb_host, mdb_port);
++    fprintf(stderr, "app initialized");
+ 
+     while (1) {
+         accept_request(app);
+-- 
+2.34.1
+
+
+From 236bb56cd46ffec3a300cea1f1606261c7bfd506 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Mon, 6 May 2024 18:27:29 -0400
+Subject: [PATCH 09/11] deleted all my debugging statements
+
+---
+ http-server.c | 40 ++++++++++++++++++++--------------------
+ 1 file changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index 8685326..5553c90 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -69,7 +69,7 @@ struct app_state* initialize_app(int server_port, char* web_root, char* mdb_look
+     s->mdb_sock = connect_to_mdb(mdb_lookup_host, mdb_port);
+     s->mdb_file = fdopen(s->mdb_sock, "r");
+     s->web_root = web_root;
+-    fprintf(stderr, "%s", s->web_root);
++   // fprintf(stderr, "%s", s->web_root);
+     int servsock;
+     if ((servsock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+         die("socket failed");
+@@ -178,25 +178,25 @@ void process_dyn_request(struct app_state* s, int client_sock, char *logLine, ch
+ 
+ void process_file_request(struct app_state* s, int client_sock, char *logLine, char* requestURI){
+     int URIlen = strlen(requestURI);
+-    fprintf(stderr, "requestURI:%s\n", requestURI);
++   // fprintf(stderr, "requestURI:%s\n", requestURI);
+     char fpath[1024];
+     if(requestURI[URIlen -1] == '/'){
+         snprintf(fpath, sizeof(fpath), "%s%sindex.html", s->web_root, requestURI);
+-        fprintf(stderr, "used index.html");
++     //   fprintf(stderr, "used index.html");
+     }else{
+         snprintf(fpath, sizeof(fpath), "%s%s", s->web_root, requestURI);
+-        fprintf(stderr, "not index.html\n");
+-        fprintf(stderr, "%s", s->web_root);
+-    }
+-    fprintf(stderr, "Constructed file path: %s\n", fpath);
+-    if(fpath[0] == '\0'){
+-        fprintf(stderr, "empty file path\n");
++       // fprintf(stderr, "not index.html\n");
++       // fprintf(stderr, "%s", s->web_root);
+     }
++   // fprintf(stderr, "Constructed file path: %s\n", fpath);
++   // if(fpath[0] == '\0'){
++     //   fprintf(stderr, "empty file path\n");
++   // }
+ 
+     struct stat statbuf;
+-    int statOutput = stat(fpath, &statbuf);
++   // int statOutput = stat(fpath, &statbuf);
+ 
+-    fprintf(stderr, "Constructed file path: %s\n", fpath);
++   /* fprintf(stderr, "Constructed file path: %s\n", fpath);
+     if(statOutput == -1) {
+    switch(errno) {
+    case EACCES:
+@@ -225,11 +225,11 @@ void process_file_request(struct app_state* s, int client_sock, char *logLine, c
+    case ENOTDIR:
+        fprintf(stderr, "ENOTDIR");    
+    }
+-}
++}*/
+ 
+    // fprintf(stderr, "%d", statOutput);
+     if (stat(fpath, &statbuf) != 0){
+-        fprintf(stderr, "%s404 Not Found stat function\n", logLine);
++        fprintf(stderr, "%s404\n", logLine);
+         if (send(client_sock, MSG_404, strlen(MSG_404), 0) != strlen(MSG_404)){
+             fprintf(stderr, "send failed\n");
+         }
+@@ -237,7 +237,7 @@ void process_file_request(struct app_state* s, int client_sock, char *logLine, c
+     }		
+ 
+     if(S_ISDIR(statbuf.st_mode)){
+-        fprintf(stderr, "%s501 Not Implemented directory issue\n", logLine);
++        fprintf(stderr, "%s501\n", logLine);
+         if (send(client_sock, MSG_501, strlen(MSG_501), 0) != strlen(MSG_501)){
+             fprintf(stderr, "send failed\n");
+         }
+@@ -245,7 +245,7 @@ void process_file_request(struct app_state* s, int client_sock, char *logLine, c
+     }
+     FILE *reqFile = fopen(fpath, "rb");
+     if(reqFile == NULL){
+-        fprintf(stderr, "%s404 Not Found reFile null\n", logLine);
++        fprintf(stderr, "%s404 Not Found\n", logLine);
+         if (send(client_sock, MSG_404, strlen(MSG_404), 0) != strlen(MSG_404)){
+             fprintf(stderr, "send failed\n");
+         }
+@@ -260,13 +260,13 @@ void process_file_request(struct app_state* s, int client_sock, char *logLine, c
+         fclose(reqFile);
+         return;
+     }
+-    fprintf(stderr, "header: %s", MSG_200);
++    //fprintf(stderr, "header: %s", MSG_200);
+ 
+     //send file 
+     char buf[4096];
+     int len; 
+     while((len = fread(buf, 1, sizeof(buf), reqFile))>0){
+-        fprintf(stderr, "%s", buf);
++  //      fprintf(stderr, "%s", buf);
+         if(send(client_sock, buf, len, 0) != len){
+             fprintf(stderr, "send failed\n"); 
+             fclose(reqFile);
+@@ -291,7 +291,7 @@ void process_request(struct app_state* s,int client_sock, char *logLine, char* r
+ 
+     char* dyn_path = "/mdb-lookup";
+     int strncmpNum = strncmp(requestURI, dyn_path, strlen(dyn_path));
+-    fprintf(stderr, "%d", strncmpNum);
++   // fprintf(stderr, "%d", strncmpNum);
+     if(strncmpNum == 0){
+         process_dyn_request(s, client_sock, logLine, requestURI);
+     } else {
+@@ -328,7 +328,7 @@ void accept_request(struct app_state* s){
+         fprintf(stderr, "No request recieved\n");
+         return;
+     }
+-    fprintf(stderr, "original request: %s", request);
++   // fprintf(stderr, "original request: %s", request);
+     char* client_ip = inet_ntoa(client_addr.sin_addr);
+     char *token_separators = "\t \r\n"; // tab, space, new line
+     char *method = strtok(request, token_separators);
+@@ -374,7 +374,7 @@ int main(int argc, char* argv[]){
+     int mdb_port = atoi(argv[4]);
+ 
+     struct app_state* app = initialize_app(server_port, web_root, mdb_host, mdb_port);
+-    fprintf(stderr, "app initialized");
++//    fprintf(stderr, "app initialized");
+ 
+     while (1) {
+         accept_request(app);
+-- 
+2.34.1
+
+
+From c1985f6cd2536a3fc99ef7e3f17c5a60f91b6904 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Mon, 6 May 2024 22:52:29 -0400
+Subject: [PATCH 10/11] done yayayayya
+
+---
+ README.txt    | 12 +++++++++---
+ http-server.c |  4 ++--
+ 2 files changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/README.txt b/README.txt
+index 66dfd3e..22b46e3 100644
+--- a/README.txt
++++ b/README.txt
+@@ -1,9 +1,15 @@
+ This file should contain:
+ 
+-  - your name
+-  - your UNI
+-  - lab assignment number
++  - your name: Pilar Maldonado
++  - your UNI: pim2109
++  - lab assignment number: 7
+   - description for each part
++
++  Part 1: web page works :)
++  Part 2: the http-server also works once i run it on firefox. I get some
++  different messages then the example like when i connect but i dont know 
++  how to fix that 
++
+   
+ The description should indicate whether your solution for the part is
+ working or not.  You may also want to include anything else you would
+diff --git a/http-server.c b/http-server.c
+index 5553c90..8c2a7a3 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -112,7 +112,6 @@ void process_dyn_request(struct app_state* s, int client_sock, char *logLine, ch
+         "</form>\n"
+         "<p>\n";
+ 
+-    fprintf(stderr, "%s 200 OK\n", logLine);
+ 
+     if (send(client_sock, MSG_200, strlen(MSG_200), 0) != strlen(MSG_200)){
+         fprintf(stderr, "send failed\n");
+@@ -132,6 +131,7 @@ void process_dyn_request(struct app_state* s, int client_sock, char *logLine, ch
+     key += strlen(key_token);
+     char search[1000];
+     fprintf(stderr,"looking up [%s]: ", key);
++    fprintf(stderr, "%s 200 OK\n", logLine);
+     snprintf(search, sizeof(search), "%s\n", key); 
+     if (send(s->mdb_sock, search, strlen(search), 0) != strlen(search)){
+         fprintf(stderr, "send failed\n");
+@@ -353,7 +353,7 @@ void accept_request(struct app_state* s){
+         if(r != strlen(MSG_501)){
+             fprintf(stderr, "send failed\n");
+         }
+-        fprintf(stderr, "%s 501 Not Implemented method and version\n", logLine);
++        fprintf(stderr, "%s 501 Not Implemented\n", logLine);
+     } else {
+         process_request(s, client_sock, logLine, requestURI); 
+     }
+-- 
+2.34.1
+
+
+From fb67930c70225e2c4052700bea1f78a112ce2d56 Mon Sep 17 00:00:00 2001
+From: Pilar Maldonado <pim2109@columbia.edu>
+Date: Mon, 6 May 2024 23:26:35 -0400
+Subject: [PATCH 11/11] fixed some things
+
+---
+ http-server.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/http-server.c b/http-server.c
+index 8c2a7a3..6f8dd0c 100644
+--- a/http-server.c
++++ b/http-server.c
+@@ -138,22 +138,22 @@ void process_dyn_request(struct app_state* s, int client_sock, char *logLine, ch
+         return;
+     }   
+     char message[100];
+-    char *tabletop = 
++    char *table_top = 
+         "<p>\n"
+         "<table border=\"\">\n"
+         "<tbody>\n";
+-    if (send(client_sock, tabletop, strlen(tabletop), 0) != strlen(tabletop)){
++    if (send(client_sock, table_top, strlen(table_top), 0) != strlen(table_top)){
+         fprintf(stderr, "send failed\n");
+         return;
+     }
+ 
+-    int rowNumber = 0;
++    int rowNum = 0;
+     char rowBuf[200];
+     while(fgets(message, sizeof(message), s->mdb_file) != NULL){
+         if(message[0] == '\n'){
+             break;
+         }
+-        if(rowNumber % 2 == 0){
++        if(rowNum % 2 == 0){
+             snprintf(rowBuf, sizeof(rowBuf), "<tr>\n<td>%s</td>\n</tr>\n", message);
+         }else{
+             snprintf(rowBuf, sizeof(rowBuf), "<tr>\n<td bgcolor=\"yellow\">%s</td>\n</tr>\n", message);
+@@ -162,15 +162,15 @@ void process_dyn_request(struct app_state* s, int client_sock, char *logLine, ch
+             fprintf(stderr, "send failed\n");
+             return;
+         }
+-        rowNumber++;
++        rowNum++;
+     }
+-    char *tablebottom = 
++    char *table_bottom = 
+         "</tbody>\n"
+         "</table>\n"
+         "</p>\n"
+         "</body>\n"
+         "</html>\n";
+-    if (send(client_sock, tablebottom, strlen(tablebottom), 0) != strlen(tablebottom)){
++    if (send(client_sock, table_bottom, strlen(table_bottom), 0) != strlen(table_bottom)){
+         fprintf(stderr, "send failed\n");
+         return;
+     }
+-- 
+2.34.1
+
